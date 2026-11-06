@@ -6,7 +6,7 @@ from app.core.database_pool import db_pool
 
 
 async def calculate_monthly_revenue(
-    property_id: str, month: int, year: int, db_session=None
+    property_id: str, tenant_id: str, month: int, year: int, db_session=None
 ) -> Decimal:
     """
     Calculates revenue for a specific month.
@@ -20,21 +20,37 @@ async def calculate_monthly_revenue(
 
     print(f"DEBUG: Querying revenue for {property_id} from {start_date} to {end_date}")
 
-    # SQL Simulation (This would be executed against the actual DB)
-    query = """
-        SELECT SUM(total_amount) as total
-        FROM reservations
-        WHERE property_id = $1
-        AND tenant_id = $2
-        AND check_in_date >= $3
-        AND check_in_date < $4
-    """
+    from sqlalchemy import text
+
+    query = text("""
+        SELECT COALESCE(SUM(r.total_amount), 0) AS total
+        FROM reservations r
+        JOIN properties p
+            ON p.id = r.property_id AND p.tenant_id = r.tenant_id
+        WHERE r.property_id = :property_id
+            AND r.tenant_id = :tenant_id
+            AND r.check_in_date AT TIME ZONE p.timezone >= :start_date
+            AND r.check_in_date AT TIME ZONE p.timezone < :end_date
+    """)
 
     # In production this query executes against a database session.
     # result = await db.fetch_val(query, property_id, tenant_id, start_date, end_date)
     # return result or Decimal('0')
 
-    return Decimal("0")  # Placeholder for now until DB connection is finalized
+    # return Decimal("0")  # Placeholder for now until DB connection is finalized
+
+    async with db_pool.get_session() as session:
+        result = await session.execute(
+            query,
+            {
+                "property_id": property_id,
+                "tenant_id": tenant_id,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+        )
+
+        return Decimal(str(result.scalar_one()))
 
 
 async def calculate_total_revenue(property_id: str, tenant_id: str) -> Dict[str, Any]:
