@@ -1,0 +1,89 @@
+{
+  "name": "PropertyFlow",
+  "build": { "dockerfile": "Dockerfile" },
+  "remoteUser": "vscode",
+
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:4": {}
+  },
+
+  // These hide the host folders, because the committed
+  // node_modules has macOS esbuild and rollup binaries and no Linux ones.
+  "mounts": [
+    "source=node-modules-${devcontainerId},target=${containerWorkspaceFolder}/frontend/node_modules,type=volume",
+    "source=backend-venv-${devcontainerId},target=${containerWorkspaceFolder}/backend/.venv,type=volume"
+  ],
+
+  "containerEnv": {
+    "UV_LINK_MODE": "copy"
+  },
+  "remoteEnv": {
+    "PATH": "${containerWorkspaceFolder}/backend/.venv/bin:${containerEnv:PATH}"
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
+  // Added 5433 and 6380 so I can connect to redis and postgres to visualise data with relevant extensions
+  "forwardPorts": [3000, 8000, 5433, 6380],
+  "portsAttributes": {
+    "3000": { "label": "Frontend", "onAutoForward": "silent" },
+    "8000": { "label": "Backend API (/docs)", "onAutoForward": "silent" },
+    "5433": { "label": "PostgreSQL", "onAutoForward": "silent" },
+    "6380": { "label": "Redis", "onAutoForward": "silent" }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // Python / FastAPI
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "charliermarsh.ruff",
+
+        // React / TypeScript / Tailwind
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+
+        // Look inside the data: Postgres and the Redis cache
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg",
+        "cweijan.vscode-redis-client",
+        "cweijan.vscode-database-client2",
+
+        // Docker and compose files
+        "ms-azuretools.vscode-containers"
+      ],
+      "settings": {
+        "python.analysis.extraPaths": ["backend"],
+        "eslint.workingDirectories": ["frontend"],
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "files.watcherExclude": {
+          "**/node_modules/**": true,
+          "**/.venv/**": true,
+          "**/dist/**": true
+        },
+        "search.exclude": {
+          "**/node_modules": true,
+          "**/dist": true
+        },
+        "sqltools.connections": [
+          {
+            "name": "propertyflow",
+            "driver": "PostgreSQL",
+            "server": "localhost",
+            "port": 5433,
+            "database": "propertyflow",
+            "username": "postgres",
+            "password": "postgres"
+          }
+        ]
+      }
+    }
+  },
+
+  "shutdownAction": "stopContainer"
+}
