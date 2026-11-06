@@ -1,36 +1,37 @@
-import sys
 import asyncio
+import sys
 
-if sys.platform == 'win32':
+if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.gzip import GZipMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from contextlib import asynccontextmanager
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 
+from app.core.database_pool import db_pool
 from app.core.redis_client import redis_client
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
+
 from .api.v1 import (
-    users_lightning,
+    auth_info,
+    bootstrap,
     cities,
     city_access_fast,
     city_access_fixed,
-    departments,
-    profile,
     company_settings,
-    auth_info,
-    bootstrap,
-    health,
-    persistent_auth,
     dashboard,
+    departments,
+    health,
     login,
+    persistent_auth,
+    profile,
+    users_lightning,
 )
-
 from .monitoring.middleware import PerformanceMonitoringMiddleware
 
 # Configure logging
@@ -57,7 +58,9 @@ async def cache_invalidation_listener():
             logger.warning("Failed to subscribe to auth_cache_invalidate channel")
             return
 
-        logger.info("✅ Cache invalidation listener started - listening on auth_cache_invalidate channel")
+        logger.info(
+            "✅ Cache invalidation listener started - listening on auth_cache_invalidate channel"
+        )
 
         # Listen for messages indefinitely
         async for message in pubsub.listen():
@@ -65,12 +68,14 @@ async def cache_invalidation_listener():
                 if message and message.get("type") == "message":
                     user_id = message.get("data")
                     if isinstance(user_id, bytes):
-                        user_id = user_id.decode('utf-8')
+                        user_id = user_id.decode("utf-8")
 
                     if user_id:
                         # Invalidate cache for this user in the current worker
                         invalidated_count = invalidate_user_cache(user_id)
-                        logger.info(f"🔄 Received cache invalidation for user {user_id} - cleared {invalidated_count} entries in this worker")
+                        logger.info(
+                            f"🔄 Received cache invalidation for user {user_id} - cleared {invalidated_count} entries in this worker"
+                        )
             except Exception as e:
                 logger.error(f"Error processing cache invalidation message: {e}")
 
@@ -89,6 +94,9 @@ async def cache_invalidation_listener():
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up...")
+
+    # Initialise the pool so it doesn't create new pools every single time we need to access the db
+    await db_pool.initialize()
 
     # Initialize Supabase connection pool
     try:
@@ -112,16 +120,21 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(cache_invalidation_listener())
         logger.info("🔄 Cache invalidation listener task created")
     else:
-        logger.info("ℹ️ Redis not connected - cache invalidation will work locally only (single worker mode)")
+        logger.info(
+            "ℹ️ Redis not connected - cache invalidation will work locally only (single worker mode)"
+        )
 
     # Start async processor background cleanup
     from .core.async_processing import async_processor
+
     async_processor.start_background_cleanup()
     logger.info("Async processor background cleanup started")
 
     yield
     # Shutdown
     logger.info("Shutting down...")
+
+    await db_pool.close()
 
     # Shutdown async processor
     await async_processor.shutdown()
@@ -162,11 +175,7 @@ app.add_middleware(
 )
 
 # GZIP compression middleware for response optimization
-app.add_middleware(
-    GZipMiddleware,
-    minimum_size=1000,
-    compresslevel=6
-)
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
 
 # Performance monitoring middleware
 app.add_middleware(PerformanceMonitoringMiddleware)
@@ -175,7 +184,9 @@ app.add_middleware(PerformanceMonitoringMiddleware)
 # Authentication
 app.include_router(login.router, prefix="/api/v1", tags=["auth"])
 app.include_router(auth_info.router, prefix="/api/v1", tags=["auth"])
-app.include_router(persistent_auth.router, prefix="/api/v1/auth", tags=["persistent-auth"])
+app.include_router(
+    persistent_auth.router, prefix="/api/v1/auth", tags=["persistent-auth"]
+)
 
 # User Management
 app.include_router(users_lightning.router, prefix="/api/v1", tags=["users"])
@@ -194,7 +205,9 @@ app.include_router(departments.router, prefix="/api/v1", tags=["departments"])
 # Cities (for user access control - used by CityAccessContext)
 app.include_router(cities.router, prefix="/api/v1", tags=["cities"])
 app.include_router(city_access_fast.router, prefix="/api/v1", tags=["city-access-fast"])
-app.include_router(city_access_fixed.router, prefix="/api/v1", tags=["city-access-fixed"])
+app.include_router(
+    city_access_fixed.router, prefix="/api/v1", tags=["city-access-fixed"]
+)
 
 # Infrastructure
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
@@ -293,8 +306,8 @@ async def api_database_health():
 async def reset_circuit_breaker():
     """Reset circuit breakers to allow operations to resume"""
     try:
-        from .core.supabase_connection_pool import supabase_pool
         from .core.async_supabase import connection_tracker
+        from .core.supabase_connection_pool import supabase_pool
 
         # Reset connection pool circuit breaker
         if supabase_pool._initialized:
@@ -324,8 +337,8 @@ async def reset_circuit_breaker():
 async def circuit_breaker_status():
     """Get current circuit breaker status"""
     try:
-        from .core.supabase_connection_pool import supabase_pool
         from .core.async_supabase import connection_tracker
+        from .core.supabase_connection_pool import supabase_pool
 
         status = {
             "connection_pool": {
@@ -369,8 +382,8 @@ async def configure_circuit_breaker(request: Request):
     try:
         body = await request.json()
 
-        from .core.supabase_connection_pool import supabase_pool
         from .core.async_supabase import connection_tracker
+        from .core.supabase_connection_pool import supabase_pool
 
         changes_made = []
 
