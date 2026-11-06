@@ -7,6 +7,16 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 
+def create_async_connection_uri(uri: str) -> str:
+    if uri.startswith("postgresql+asyncpg://"):
+        return uri
+
+    if uri.startswith("postgres://") or uri.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + uri.split("://", 1)[-1]
+
+    return uri
+
+
 class DatabasePool:
     def __init__(self):
         self.engine = None
@@ -16,7 +26,7 @@ class DatabasePool:
         """Initialize database connection pool"""
         try:
             # Create async engine with connection pooling
-            database_url = settings.database_url
+            database_url = create_async_connection_uri(settings.database_url)
 
             self.engine = create_async_engine(
                 database_url,
@@ -43,7 +53,7 @@ class DatabasePool:
         if self.engine:
             await self.engine.dispose()
 
-    async def get_session(self) -> AsyncSession:
+    def get_session(self) -> AsyncSession:
         """Get database session from pool"""
         if not self.session_factory:
             raise Exception("Database pool not initialized")
