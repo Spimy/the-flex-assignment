@@ -10,3 +10,6 @@ pre-commit:
 
 uv-install:
 	cd backend && uv sync
+
+flush-cache:
+	docker-compose exec redis redis-cli flushall
